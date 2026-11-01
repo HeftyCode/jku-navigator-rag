@@ -1,23 +1,23 @@
 {
-  "timestamp": "2026-10-29 04:33:36",
+  "timestamp": "2026-11-01 17:15:19",
   "retrieval_100_ablation": {
     "total_queries": 100,
     "top_k": 5,
     "ablation_results": {
       "naive_dense": {
-        "exact_chunk_hit_rate_pct": 85.0,
-        "document_hit_rate_pct": 98.0,
-        "mrr": 0.688
+        "exact_chunk_hit_rate_pct": 72.0,
+        "document_hit_rate_pct": 90.0,
+        "mrr": 0.569
       },
       "sparse_bm25": {
-        "exact_chunk_hit_rate_pct": 98.0,
-        "document_hit_rate_pct": 100.0,
-        "mrr": 0.7
+        "exact_chunk_hit_rate_pct": 91.0,
+        "document_hit_rate_pct": 97.0,
+        "mrr": 0.686
       },
       "hybrid_reranked": {
-        "exact_chunk_hit_rate_pct": 99.0,
-        "document_hit_rate_pct": 100.0,
-        "mrr": 0.832
+        "exact_chunk_hit_rate_pct": 95.0,
+        "document_hit_rate_pct": 99.0,
+        "mrr": 0.792
       }
     }
   },
@@ -36,8 +36,8 @@
         "answer_relevant": true,
         "supported_by_context": true,
         "hallucinated": false,
-        "judge_reasoning": "The answer accurately reflects the Hausordnung rules about pets, including the blanket ban, employee exceptions, leash/muzzle requirement, and cleanup obligation, all of which are present in the retrieved context.",
-        "answer_preview": "According to the JKU House Rules (Hausordnung) the campus has a blanket ban on pets in all buildings. The only exceptions are employees who have specially trained dogs for disability or therapeutic purposes, with medical..."
+        "judge_reasoning": "The answer directly addresses the question using the house rules about pet bans, exceptions, and visitor requirements found in the provided context.",
+        "answer_preview": "According to the JKU house rules, a dog is generally **not allowed** in any JKU building. The rules state that **all buildings have a pet ban**【2116_Hausordnung_V17_2026_10_08.pdf, Page 14】. \n\n**Exceptions** are limited ..."
       },
       {
         "question": "Was ist der Unterschied zwischen VL und KV Kursen im Bachelor AI?",
@@ -47,8 +47,8 @@
         "answer_relevant": true,
         "supported_by_context": true,
         "hallucinated": false,
-        "judge_reasoning": "The answer correctly distinguishes VL as lecture-only and KV as a combination of lecture and exercise, directly supported by the provided document excerpts.",
-        "answer_preview": "**VL (Vorlesung)**\n\n- Ein VL‑Kurs besteht ausschließlich aus Vorlesungen. Er ist in der Regel als reine Vorlesung gekennzeichnet und wird in der Regel im Hybrid‑Modus angeboten, wobei die Vorlesungen aufgezeichnet und au..."
+        "judge_reasoning": "The answer correctly states VL are lectures and KV are combined courses, matching the provided documents and noting their hybrid format.",
+        "answer_preview": "Im Bachelor‑Studiengang Künstliche Intelligenz bezeichnet **VL** eine *Vorlesung* (Lecture), während **KV** für *Kombinierte Veranstaltung* (Combined Course) steht. Beide Kursarten werden überwiegend im Hybrid‑Format ang..."
       },
       {
         "question": "Where are the Distance Learning Centers located for the JKU AI program?",
@@ -58,8 +58,8 @@
         "answer_relevant": true,
         "supported_by_context": true,
         "hallucinated": false,
-        "judge_reasoning": "The answer correctly lists Vienna and Bregenz as locations and provides the Bregenz address, all of which are directly supported by the retrieved context.",
-        "answer_preview": "The JKU AI program offers Distance Learning Centers in **Vienna** and **Bregenz**. The Bregenz center is located at **Belruptstraße 10, 6900 Bregenz**.\n\n- Vienna and Bregenz students can use the Distance Learning Centers..."
+        "judge_reasoning": "The answer correctly states the centers are in Vienna and Bregenz, directly matching the retrieved context.",
+        "answer_preview": "The Distance Learning Centers for the AI program are available in **Vienna** and **Bregenz**. These centers provide facilities for study and examinations, with lecture halls equipped with advanced streaming tools so stud..."
       },
       {
         "question": "Welche Regeln gelten laut Parkordnung für das Parken am JKU Campus?",
@@ -69,8 +69,8 @@
         "answer_relevant": true,
         "supported_by_context": true,
         "hallucinated": false,
-        "judge_reasoning": "The answer correctly cites disabled parking rules and liability from the retrieved context, but it omits general parking regulations, so it is partially relevant and supported but incomplete.",
-        "answer_preview": "Die Parkordnung der JKU legt fest, dass Universitätsangehörige mit Behinderung, die im Besitz eines Ausweises gemäß S 29b SIVO sind, auf den dafür gekennzeichneten Stellplätzen am Campus, in der Tiefgarage des Science Pa..."
+        "judge_reasoning": "The answer lists parking rules that are directly drawn from the provided Parkordnung sections, matching the question without adding unsupported information.",
+        "answer_preview": "## Regeln laut Parkordnung der JKU\n\n- **Einhaltung der Parkordnung und Anweisungen**: Verstöße gegen behördliche Vorschriften, die Nichtbefolgung der Parkordnung oder der Anweisungen des für den Parkraum zuständigen Pers..."
       },
       {
         "question": "How does credit transfer work between Informatik and Artificial Intelligence at JKU?",
@@ -80,8 +80,8 @@
         "answer_relevant": true,
         "supported_by_context": true,
         "hallucinated": false,
-        "judge_reasoning": "The answer accurately summarizes the credit transfer agreement and cites the table from the retrieved document.",
-        "answer_preview": "At JKU, the credit transfer between the Bachelor Informatik and Bachelor Artificial Intelligence programs is governed by a formal agreement that lists courses that can be transferred. The agreement provides a table that ..."
+        "judge_reasoning": "The answer directly describes the module‑by‑module credit mapping and totals shown in the provided table, without adding unsupported information.",
+        "answer_preview": "At JKU the credit transfer between the Bachelor Informatik and the Bachelor Artificial Intelligence programmes is based on a detailed module‑by‑module mapping. Each Informatik course is matched to an equivalent AI course..."
       },
       {
         "question": "How are credits transferred between Bioinformatics and Artificial Intelligence?",
@@ -91,8 +91,8 @@
         "answer_relevant": true,
         "supported_by_context": true,
         "hallucinated": false,
-        "judge_reasoning": "The answer accurately summarizes the credit transfer table provided in the retrieved documents and gives correct examples of course mappings.",
-        "answer_preview": "Credits between the Bioinformatics and Artificial Intelligence programmes at JKU are transferred by matching courses that cover the same content. The official credit‑transfer table (see *Credit_Transfer_between_the_Progr..."
+        "judge_reasoning": "The answer directly mirrors the course‑credit mappings and totals presented in the retrieved JKU document.",
+        "answer_preview": "### Credit transfer between Bioinformatics and Artificial Intelligence (JKU)\n\nThe JKU document provides a detailed mapping of each **Bachelor Bioinformatics** course to its counterpart(s) in the **Bachelor Artificial Int..."
       },
       {
         "question": "What is the minimum cryptocurrency deposit required to use the JKU submarine dock?",
@@ -102,8 +102,8 @@
         "answer_relevant": true,
         "supported_by_context": true,
         "hallucinated": false,
-        "judge_reasoning": "The answer correctly states that the documents do not contain the requested information.",
-        "answer_preview": "The current JKU documents do not contain information about a cryptocurrency deposit for a submarine dock...."
+        "judge_reasoning": "The answer correctly states that the documents lack any information about a cryptocurrency deposit or submarine dock, which is supported by the provided context.",
+        "answer_preview": "The provided JKU documents do not contain any information about a cryptocurrency deposit or a submarine dock...."
       },
       {
         "question": "Welches Formular muss ich ausfüllen, um ein kostenloses JKU-Raumschiff zu mieten?",
@@ -113,8 +113,8 @@
         "answer_relevant": true,
         "supported_by_context": true,
         "hallucinated": false,
-        "judge_reasoning": "The answer correctly states that the provided documents contain no information about a form for free room rental, which is consistent with the retrieved context.",
-        "answer_preview": "Derzeit enthalten die bereitgestellten JKU-Dokumente keine Angaben zu einem Formular für die kostenlose Anmietung eines Raums...."
+        "judge_reasoning": "The answer correctly states that the retrieved JKU documents do not contain any information about a form for renting a free JKU spaceship.",
+        "answer_preview": "Die aktuellen JKU‑Dokumente enthalten keine Information darüber, welches Formular für die kostenlose Anmietung eines JKU‑Raumschiffs auszufüllen ist...."
       }
     ]
   }

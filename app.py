@@ -215,16 +215,19 @@ with tab_eval:
 with tab_corpus:
     chunks_data = load_json_file("data/processed/chunks.json")
     if chunks_data:
-        st.subheader(f"{len(chunks_data)} Contextual Chunks Indexed Across 5 JKU Documents")
         doc_counts = {}
         for c in chunks_data:
             doc_counts[c["source"]] = doc_counts.get(c["source"], 0) + 1
 
-        for doc_name, count in doc_counts.items():
+        st.subheader(
+            f"{len(chunks_data)} Contextual Chunks Indexed Across {len(doc_counts)} JKU Documents"
+        )
+
+        for doc_name, count in sorted(doc_counts.items()):
             st.markdown(f"- **`{doc_name}`** — `{count}` indexed chunks")
 
         st.markdown("---")
-        selected_doc = st.selectbox("Filter chunks by document:", list(doc_counts.keys()))
+        selected_doc = st.selectbox("Filter chunks by document:", sorted(doc_counts.keys()))
         filtered = [c for c in chunks_data if c["source"] == selected_doc][:10]
         st.caption(f"Showing first 10 chunks of `{selected_doc}`:")
         for c in filtered:
