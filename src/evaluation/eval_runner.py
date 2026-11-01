@@ -262,16 +262,14 @@ Return ONLY valid JSON with this exact schema:
 }}"""
 
         user_msg = f"QUESTION: {question}\n\nRETRIEVED CONTEXT:\n{context_text}\n\nGENERATED ANSWER:\n{answer}"
-        resp = self.bot.client.chat.completions.create(
-            model=self.bot.model,
+        raw_judge = self.bot.chat_with_retry(
             messages=[
                 {"role": "system", "content": prompt},
                 {"role": "user", "content": user_msg},
             ],
-            response_format={"type": "json_object"},
             temperature=0.0,
         )
-        return JudgeScore(**json.loads(resp.choices[0].message.content))
+        return JudgeScore(**json.loads(raw_judge))
 
     def run_all_and_save(self):
         try:

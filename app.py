@@ -65,7 +65,7 @@ st.markdown(
 tab_chat, tab_eval, tab_corpus = st.tabs([
     "Bilingual RAG Assistant",
     "100-Query Evaluation & Ablation Dashboard",
-    "Indexed JKU Documents (480 Chunks)",
+    "Indexed JKU Document Corpus",
 ])
 
 # =====================================================================

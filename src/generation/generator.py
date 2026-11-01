@@ -1,9 +1,11 @@
 import os
+import re
+import time
 import json
 from typing import List, Optional, Literal
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
-from groq import Groq
+from groq import Groq, RateLimitError, BadRequestError
 from src.config import settings
 from src.retrieval.hybrid_search import HybridRetriever
 
@@ -45,32 +47,104 @@ class JKUNavigatorGenerator:
             raise ValueError("GROQ_API_KEY is missing! Please set your free key inside the .env file.")
         
         self.client = Groq(api_key=settings.GROQ_API_KEY)
-        self.model = self._resolve_active_model()
+        self.fallback_models = self._get_available_fallback_models()
+        self.model_idx = 0
+        self.model = self.fallback_models[self.model_idx]
         self.retriever = HybridRetriever()
 
-    def _resolve_active_model(self) -> str:
-        """Verifies the configured LLM is active on Groq, or auto-selects the best available free model."""
-        preferred_Order = [
+    def _get_available_fallback_models(self) -> List[str]:
+        """Builds a prioritized list of active free Groq chat models."""
+        preferred = [
             settings.LLM_MODEL,
             "openai/gpt-oss-120b",
             "openai/gpt-oss-20b",
-            "qwen/qwen3.8-27b",
+            "meta-llama/llama-4-scout-17b-16e-instruct",
+            "meta-llama/llama-4-maverick-17b-128e-instruct",
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
         ]
+        unique_preferred = list(dict.fromkeys(preferred))
         try:
             available_ids = {m.id for m in self.client.models.list().data}
-            for candidate in preferred_Order:
-                if candidate in available_ids:
-                    print(f"Using active Groq LLM: {candidate}")
-                    return candidate
+            active = [m for m in unique_preferred if m in available_ids]
+            # Also append any other active non-audio/non-guard models on the account as backup
+            for mid in sorted(available_ids):
+                if mid not in active and not any(skip in mid.lower() for skip in ["whisper", "guard", "tts", "embed", "vision", "orpheus", "allam", "playai"]):
+                    active.append(mid)
+            if active:
+                print(f"Active Groq Model Pool: {active[:5]}")
+                return active[:5]
         except Exception:
             pass
-        return settings.LLM_MODEL
+        return unique_preferred
+
+    @staticmethod
+    def _extract_json_object(raw_text: str) -> str:
+        """Cleanly extracts a JSON object {...} even if the model wraps it in markdown or reasoning text."""
+        if not raw_text:
+            raise ValueError("Empty response from model")
+        cleaned = re.sub(r"<think>.*?</think>", "", raw_text, flags=re.DOTALL).strip()
+        match = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)
+        if match:
+            return match.group(0)
+        return cleaned
+
+    def chat_with_retry(self, messages: List[dict], temperature: float = 0.0) -> str:
+        """
+        Production Fault-Tolerant LLM Caller:
+        1. Auto-switches models on Daily Limit (TPD).
+        2. Waits and retries on Per-Minute Limit (TPM).
+        3. Falls back from strict server-side json_object mode to regex JSON extraction if a smaller model throws Error 400.
+        """
+        max_attempts = 8
+        use_strict_json_mode = True
+
+        for attempt in range(max_attempts):
+            current_model = self.fallback_models[self.model_idx]
+            try:
+                kwargs = {
+                    "model": current_model,
+                    "messages": messages,
+                    "temperature": temperature if use_strict_json_mode else 0.2,
+                }
+                if use_strict_json_mode:
+                    kwargs["response_format"] = {"type": "json_object"}
+
+                resp = self.client.chat.completions.create(**kwargs)
+                content = resp.choices[0].message.content or ""
+                json_str = self._extract_json_object(content)
+                # Verify it parses as valid JSON before returning
+                json.loads(json_str)
+                return json_str
+
+            except BadRequestError as e:
+                # Groq Error 400: json_validate_failed on smaller reasoning models
+                print(f"Strict JSON validator tripped on {current_model}. Retrying with client-side JSON parser...")
+                use_strict_json_mode = False
+                continue
+
+            except (json.JSONDecodeError, ValueError):
+                print(f"Malformed JSON output from {current_model}. Retrying...")
+                use_strict_json_mode = False
+                continue
+
+            except RateLimitError as e:
+                err_msg = str(e).lower()
+                if "tokens per day" in err_msg or "tpd" in err_msg:
+                    if len(self.fallback_models) > 1:
+                        old_model = current_model
+                        self.model_idx = (self.model_idx + 1) % len(self.fallback_models)
+                        self.model = self.fallback_models[self.model_idx]
+                        use_strict_json_mode = True
+                        print(f"Daily limit reached on {old_model}. Auto-switching to {self.model}...")
+                        continue
+                wait_sec = 8.0
+                print(f"Rate limit (TPM) paused on {current_model}. Waiting {wait_sec}s ({attempt + 1}/{max_attempts})...")
+                time.sleep(wait_sec)
+
+        raise RuntimeError("All retry attempts exhausted across the Groq model pool.")
 
     def expand_query_bilingually(self, user_query: str) -> QueryExpansion:
-        """
-        Expands an English or German question into high-signal EN+DE keywords and synonyms
-        (including German plurals and compound nouns) so BM25 and Dense search hit both languages.
-        """
         system_prompt = (
             "You are a bilingual search query optimizer for Johannes Kepler University (JKU) Linz.\n"
             "Given a user question in English or German:\n"
@@ -84,18 +158,14 @@ class JKUNavigatorGenerator:
             '{"detected_language": "en", "bilingual_search_query": "..."}'
         )
 
-        response = self.client.chat.completions.create(
-            model=self.model,
+        raw_content = self.chat_with_retry(
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_query},
             ],
-            response_format={"type": "json_object"},
             temperature=0.0,
         )
-
-        raw_json = json.loads(response.choices[0].message.content)
-        return QueryExpansion(**raw_json)
+        return QueryExpansion(**json.loads(raw_content))
 
     def answer_question(
         self,
@@ -103,12 +173,6 @@ class JKUNavigatorGenerator:
         target_language: Optional[Literal["auto", "en", "de"]] = "auto",
         top_n_chunks: int = 5,
     ) -> dict:
-        """
-        Full End-to-End Pipeline:
-        1. Bilingual Query Expansion (EN + DE)
-        2. Hybrid Search (Dense + BM25) + RRF + Cross-Encoder Reranking
-        3. Grounded LLM Generation with Pydantic Validation & Citations
-        """
         expansion = self.expand_query_bilingually(user_query)
         reply_lang = expansion.detected_language if target_language == "auto" else target_language
         lang_name = "English" if reply_lang == "en" else "German (Deutsch)"
@@ -133,7 +197,7 @@ You must answer the student's question using ONLY the provided JKU source chunks
 CRITICAL RULES:
 1. LANGUAGE: Write your entire 'answer' and 'evidence_summary' fields in **{lang_name}** (even if the source PDF chunks are in a different language!).
 2. INLINE CITATIONS: Every factual claim in your 'answer' MUST include an inline citation showing the exact PDF filename and Page number in brackets, like [Bachelor_AI_Studienleitfaden.pdf, Page 14] or [2116_Hausordnung_V17_2026_10_08.pdf, Page 4].
-3. NO HALLUCINATION (ABSTENTION): If the provided chunks do not contain the answer, set "is_supported_by_context" to false, leave "citations" empty, and politely state in {lang_name} that the current JKU documents do not contain this information. Never guess or invent rules.
+3. STRICT ZERO-EXTRAPOLATION (NO HALLUCINATION): State ONLY facts, definitions, and details that are EXPLICITLY written word-for-word in the provided chunks. NEVER use outside knowledge, never infer what an acronym means unless the chunk explicitly defines it, and never add extra examples. If a detail is missing from the chunks, omit it completely. If the chunks do not answer the question at all, set "is_supported_by_context" to false, leave "citations" empty, and politely state in {lang_name} that the current JKU documents do not contain this information.
 4. OUTPUT FORMAT: Return ONLY a valid JSON object matching this exact schema:
 {{
   "answer": "Detailed markdown response in {lang_name} with inline [Filename.pdf, Page X] citations...",
@@ -154,18 +218,15 @@ CRITICAL RULES:
             f"Remember to respond in {lang_name} as valid JSON."
         )
 
-        completion = self.client.chat.completions.create(
-            model=self.model,
+        raw_output = self.chat_with_retry(
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message},
             ],
-            response_format={"type": "json_object"},
-            temperature=0.1,
+            temperature=0.0,
         )
 
-        raw_output = json.loads(completion.choices[0].message.content)
-        validated_response = RAGResponse(**raw_output)
+        validated_response = RAGResponse(**json.loads(raw_output))
 
         return {
             "user_query": user_query,
@@ -180,31 +241,3 @@ CRITICAL RULES:
 
     def close(self):
         self.retriever.close()
-
-
-if __name__ == "__main__":
-    bot = JKUNavigatorGenerator()
-    try:
-        # Test 1: Asking in ENGLISH about a GERMAN document (Hausordnung / Parkordnung)
-        q1 = "Am I allowed to bring my dog or ride an e-scooter inside the JKU campus buildings?"
-        print(f"\n==========================================")
-        print(f"🇬🇧 TEST 1 (English Question -> German PDF): {q1}")
-        res1 = bot.answer_question(q1)
-        print(f"Bilingual Query Generated: {res1['bilingual_search_query']}")
-        print(f"\nAnswer ({res1['reply_language'].upper()}):\n{res1['answer']}")
-        print(f"\nStructured Citations ({len(res1['citations'])}):")
-        for cit in res1["citations"]:
-            print(f"  - [{cit['source']}, Page {cit['page']}] ({cit['section']}): {cit['evidence_summary']}")
-
-        # Test 2: Asking in GERMAN about an ENGLISH document (Bachelor AI Study Guide)
-        q2 = "Was ist der Unterschied zwischen einer VL und einer KV im AI Bachelorstudium, und gibt es Anwesenheitspflicht?"
-        print(f"\n==========================================")
-        print(f"🇩🇪 TEST 2 (German Question -> English PDF): {q2}")
-        res2 = bot.answer_question(q2)
-        print(f"Bilingual Query Generated: {res2['bilingual_search_query']}")
-        print(f"\nAnswer ({res2['reply_language'].upper()}):\n{res2['answer']}")
-        print(f"\nStructured Citations ({len(res2['citations'])}):")
-        for cit in res2["citations"]:
-            print(f"  - [{cit['source']}, Page {cit['page']}] ({cit['section']}): {cit['evidence_summary']}")
-    finally:
-        bot.close()
