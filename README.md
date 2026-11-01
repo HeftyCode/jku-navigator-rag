@@ -1,68 +1,72 @@
-# JKU Linz & Austrian Student Life Navigator — Bilingual Production RAG
+# 🎓 JKU Linz & Austrian Student Life Navigator — Bilingual Production RAG
 
 [![Live App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://jku-navigator.streamlit.app)
 
-An end-to-end, auditable **Bilingual (English / German) Retrieval-Augmented Generation (RAG)** system built for **Johannes Kepler University (JKU) Linz** students. It indexes **2,699 hierarchical chunks across 27 official JKU documents**—covering TNF Computing & Natural Sciences Bachelor curricula (AI, Computer Science, Bioinformatics, Data Science, Mathematics, Physics, Chemistry, Mechatronics, Electronics, Medical Engineering), credit transfer equivalence tables, examination law (*Satzungsteil Studienrecht*), and campus regulations (*Hausordnung*, *Parkordnung*, Library & ZID IT rules).
+An auditable **Bilingual (English / German) Retrieval-Augmented Generation (RAG)** system built for **Johannes Kepler University (JKU) Linz** students. It indexes **3,046 structure-aware chunks across 27 official JKU documents**—covering TNF Computing & Natural Sciences Bachelor curricula (AI, Computer Science, Bioinformatics, Statistics & Data Science, Mathematics, Physics, Chemistry, Mechatronics, Electronics, Medical Engineering), credit transfer equivalence tables, examination law (*Satzungsteil Studienrecht*), and campus regulations (*Hausordnung*, *Parkordnung*, Library & ZID IT rules).
 
 **Live Deployment:** [https://jku-navigator.streamlit.app](https://jku-navigator.streamlit.app)
 
 ---
 
-## System Architecture & Why Standard RAG Fails Here
+## System Architecture
 
-University regulations and curricula break naive "chat-with-PDF" tutorials because they mix **German legal paragraphs (`§ 14 Abs. 2`)**, **exact course abbreviations (`VL`, `KV`, `UE`)**, and **cross-lingual queries** (e.g., an international student asking in English about a German regulation).
-
-1. **Page- & Section-Aware Hierarchical Ingestion (`src/ingestion/parser.py`):**
-   - Extracts clean Markdown from 27 JKU PDFs using `PyMuPDF4LLM` while preserving credit transfer tables and injecting `[Source.pdf | Page X | Section: Y]` headers into all **2,699 chunks**.
-2. **Bilingual Query Expansion (`src/generation/generator.py`):**
-   - Automatically detects query language (`en` / `de`) and expands search queries with cross-lingual academic/legal synonyms and German compound nouns before retrieval.
-3. **Hybrid Search + Reciprocal Rank Fusion (`src/retrieval/hybrid_search.py`):**
+1. **Table- & Token-Aware Ingestion (`src/ingestion/parser.py`):**
+   - Extracts page-level Markdown from 27 JKU PDFs using `PyMuPDF4LLM`.
+   - Enforces a 420-character chunk budget (median **348 chars / ~85 tokens**, max **670 chars**) tuned specifically to fit within the **128-token context window** of `paraphrase-multilingual-MiniLM-L12-v2` without silent tail truncation.
+   - Automatically repeats Markdown table headers across split table chunks and deduplicates chunks via SHA-1 content hashes.
+2. **Decoupled Bilingual Query Routing (`src/generation/generator.py`):**
+   - Expands user questions into English and German academic/regulatory keywords for sparse retrieval while keeping the natural user question intact for Cross-Encoder reranking.
+3. **Symmetric Snowball BM25 + Dense Hybrid Search (`src/retrieval/hybrid_search.py`):**
    - **Dense Retrieval:** `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` indexed in `Qdrant`.
-   - **Sparse Keyword Retrieval:** `BM25Okapi` with a custom regex tokenizer (`[a-z0-9äöüß§]+(?:\.[0-9]+)*`), bilingual stopword filtering, and 4-character morphological root stemming so German plurals/compounds match (`Hund` $\leftrightarrow$ `Hunde` / `Haustierverbot`).
-   - **Fusion:** Merges top-20 Dense and top-20 Sparse results via **Reciprocal Rank Fusion ($k=60$)**.
-4. **Cross-Encoder Reranking:**
-   - Re-scores fused candidates using `cross-encoder/ms-marco-MiniLM-L-6-v2` to pass only the highest-evidence top-$K$ chunks to the generator.
-5. **Zero-Extrapolation Guardrails & Fault-Tolerant LLM Routing:**
-   - Enforces strict `Pydantic` JSON output schemas with page-level inline citations (`[Filename.pdf, Page X]`), automatic abstention on unanswerable queries, and automatic rate-limit failover across Groq LLMs.
+   - **Sparse Retrieval:** `BM25Okapi` with Unicode `NFKC` normalization, `§ 14` $\rightarrow$ `§14` legal clause normalization, and symmetric German + English Snowball stemmers (`nltk.stem.snowball`) so inflected forms (`Hund` $\leftrightarrow$ `Hunde`) match in both directions.
+   - **Fusion & Reranking:** Merges top-20 Dense and top-20 Sparse candidates via **Reciprocal Rank Fusion ($k=60$)** and re-scores pairs against the natural query using the multilingual Cross-Encoder **`cross-encoder/mmarco-mMiniLMv2-L12-H384-v1`**.
+4. **Programmatic Citation Verification & Thread-Safe Fault Tolerance:**
+   - Every `[Filename.pdf, Page X]` citation generated by the LLM is programmatically verified (`verify_citations()`) against the retrieved chunk metadata before rendering.
+   - Includes a pre-LLM Cross-Encoder confidence gate, thread-safe model inference locks, non-blocking `FastAPI` threadpool execution (`/health`, `/ready`, `/ask`), and per-model cooldown rotation on rate limits.
 
 ---
 
-## Evaluation & 100-Query Ablation Benchmark (`src/evaluation/eval_runner.py`)
+## 4-Arm Retrieval Ablation & End-to-End Evaluation (`src/evaluation/eval_runner.py`)
 
-Evaluated across a 100-query benchmark and an 8-case adversarial LLM-as-a-Judge audit:
+Evaluated across **3,046 chunks** on 100 interior-clause queries (reporting Page-Level Recall@5 with **95% Wilson Score Confidence Intervals**) and a 12-case bilingual + adversarial generation audit:
 
-| Retrieval Architecture | Exact Chunk Hit Rate @ 5 | Document Hit Rate @ 5 | Mean Reciprocal Rank (MRR) |
-| :--- | :---: | :---: | :---: |
-| **1. Naive Dense Vector Only** | 72.0% | 90.0% | 0.569 |
-| **2. Sparse BM25 Keyword Only** | 91.0% | 97.0% | 0.686 |
-| **3. Hybrid RRF + Cross-Encoder (Ours)** | **95.0% (+23.0% vs. Dense)** | **99.0%** | **0.792 (+39.2% vs. Dense)** |
+| Retrieval Architecture | Page Hit Rate @ 5 | 95% Wilson CI | Document Hit Rate @ 5 | Mean Reciprocal Rank (MRR) |
+| :--- | :---: | :---: | :---: | :---: |
+| **1. Naive Dense Vector Only** | 30.0% | 21.9% – 39.6% | 55.0% | 0.238 |
+| **2. Sparse BM25 (Snowball DE/EN)** | 99.0% | 94.6% – 99.8% | 100.0% | 0.877 |
+| **3. Hybrid RRF (No Reranker)** | 86.0% | 77.9% – 91.5% | 90.0% | 0.547 |
+| **4. Hybrid RRF + mMARCO Reranker** | **96.0%** | **90.2% – 98.4%** | **98.0%** | **0.766 (+0.219 MRR vs. RRF)** |
 
-* **End-to-End Generation Audit (LLM-as-a-Judge):**
-  * **Document Retrieval Accuracy:** `100.0%`
-  * **Answer Relevance:** `100.0%`
-  * **Context Faithfulness:** `100.0%`
-  * **Hallucination Rate:** `0.0%`
+* **Why Reranking Matters over Unweighted RRF:** On technical/regulatory queries with exact course codes and German terms, Naive Dense (`30.0%` Hit@5) injects low-relevance neighbours into unweighted RRF, pulling standalone RRF down to `86.0%` Hit@5 (`0.547` MRR). Adding the multilingual `mmarco-mMiniLMv2` Cross-Encoder recovers **+10.0 percentage points (`86.0%` $\rightarrow$ `96.0%`)** and boosts MRR by **+0.219 (`0.547` $\rightarrow$ `0.766`)** while retaining dense semantic coverage for paraphrased cross-lingual queries.
 
----
-
-## Engineering Post-Mortem: Failure Modes Identified & Fixed
-
-1. **Cross-Lingual BM25 Dilution & German Morphology:**
-   - *Failure:* Asking in English (*"Am I allowed to bring my dog onto the JKU campus?"*) initially failed to retrieve the German *Hausordnung* (`Haustierverbot`) because English conversational stopwords (`am, i, to, onto, the`) matched English study guides in BM25, and singular `Hund` missed plural `Hunde`.
-   - *Fix:* Stripped bilingual stopwords in `_tokenize()`, added 4-character prefix stems for words $\ge 5$ chars, and constrained query expansion to high-signal bilingual terms and compound nouns.
-2. **Pre-Trained Knowledge Extrapolation (12.5% $\rightarrow$ 0.0% Hallucination):**
-   - *Failure:* Our LLM Judge flagged a German response about `KV` courses because the generator used outside knowledge to define "Combined Course" components not explicitly stated in the retrieved chunk.
-   - *Fix:* Added strict zero-extrapolation constraints to the generator system prompt, dropping the audited hallucination rate from `12.5%` to `0.0%`.
-3. **LLM API Rate Limits & Smaller-Model JSON Formatting:**
-   - *Failure:* Running batch evaluations hit Groq's 200k daily token limit on the primary 120B model, and smaller fallback models occasionally tripped server-side `json_object` validation.
-   - *Fix:* Implemented `chat_with_retry()` with automatic model-pool rotation on Daily Token Limits (`TPD`), backoff retries on Per-Minute Limits (`TPM`), and regex-based client-side JSON extraction fallback.
+* **End-to-End Generation & Citation Audit (`n=12`):**
+  * **Document Retrieval Accuracy:** `100.0%` (12/12)
+  * **Answer Relevance:** `100.0%` (12/12)
+  * **Programmatic Citation Verification Rate:** `100.0%` (12/12)
+  * **Context Faithfulness:** `91.7%` (11/12)
+  * **Audited Hallucination Rate:** `8.3%` (1/12)
 
 ---
 
-## Quickstart (Local & FastAPI)
+## Engineering Post-Mortem: Bugs Caught & Fixed
+
+1. **Chunker Overlap Cascade & 128-Token Embedder Truncation:**
+   - *Initial Bug:* Carrying over the last 3 lines as overlap caused long single-line PDF paragraphs to cascade into 1,900+ char chunks, which were silently truncated past token 128 by `paraphrase-multilingual-MiniLM-L12-v2`. Splitting Markdown tables also lost column headers after the first chunk.
+   - *Fix:* Rebuilt `JKUDocumentParser` with sentence-level line splitting, a strict 420-char budget (median **348 chars**), 80-char overlap cap, SHA-1 deduplication, and automatic Markdown table-header propagation.
+2. **Asymmetric 4-Char Prefix Stemming vs. Symmetric Snowball Stemming:**
+   - *Initial Bug:* Emitting 4-char stems only for words $\ge 5$ chars meant a 4-letter query (`Hund`) failed to match a 5-letter plural document token (`Hunde` $\rightarrow$ `hund*`) in standalone BM25.
+   - *Fix:* Replaced custom prefix slicing with symmetric German and English `SnowballStemmer` tokenization plus `§ 14` $\rightarrow$ `§14` normalization, verified via `pytest`.
+3. **English-Only Reranker Fed Keyword Soup:**
+   - *Initial Bug:* Passing the bilingual keyword-expansion string into an English-only Cross-Encoder (`ms-marco-MiniLM-L-6-v2`) degraded German reranking.
+   - *Fix:* Switched to the multilingual `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` and decoupled the query path so BM25 uses the bilingual keyword expansion while the Cross-Encoder scores against the user's natural question.
+
+---
+
+## Quickstart (Local, Docker & FastAPI)
 
 ```bash
 pip install -r requirements.txt
+python -m pytest -v
 python -m src.ingestion.parser
 python -m src.ingestion.indexer
 python -m src.evaluation.eval_runner
@@ -70,6 +74,6 @@ python -m src.evaluation.eval_runner
 # Launch Streamlit UI
 streamlit run app.py
 
-# Or launch FastAPI REST Backend (Swagger UI at http://localhost:8000/docs)
+# Or launch non-blocking FastAPI REST Backend (Swagger UI at http://localhost:8000/docs)
 uvicorn src.api.main:app --reload
 ```

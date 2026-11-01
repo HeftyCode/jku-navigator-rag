@@ -3,27 +3,32 @@ from pathlib import Path
 import streamlit as st
 from src.generation.generator import JKUNavigatorGenerator
 
-# --- Page Configuration ---
 st.set_page_config(
     page_title="JKU & Austrian Student Navigator",
     page_icon="🎓",
     layout="wide",
 )
 
-# --- Cache the RAG Pipeline so Qdrant & Models Load Only ONCE ---
-@st.cache_resource(show_spinner="Loading Multilingual Embedder, Cross-Encoder Reranker & Qdrant Index...")
+
+@st.cache_resource(show_spinner="Loading Multilingual Embedder, mMARCO Reranker & Qdrant Index...")
 def get_rag_engine() -> JKUNavigatorGenerator:
     return JKUNavigatorGenerator()
 
 
-def load_json_file(filepath: str):
+@st.cache_data(ttl=60)
+def load_json_file(filepath: str, _mtime: float = 0.0):
     path = Path(filepath)
     if path.exists():
         return json.loads(path.read_text(encoding="utf-8"))
     return None
 
 
-# --- Sidebar Controls & Architecture Info ---
+def read_cached_json(filepath: str):
+    path = Path(filepath)
+    mtime = path.stat().st_mtime if path.exists() else 0.0
+    return load_json_file(filepath, _mtime=mtime)
+
+
 with st.sidebar:
     st.title("JKU Navigator AI")
     st.caption("Production Bilingual RAG Engine (EN 🇬🇧 / DE 🇩🇪)")
@@ -45,26 +50,24 @@ with st.sidebar:
     st.subheader("Active Pipeline Stack")
     st.markdown(
         """
-        - **Parser:** `PyMuPDF4LLM` (Page & Section aware)
+        - **Parser:** `PyMuPDF4LLM` (Table-header & 128-token aware)
         - **Dense Search:** `paraphrase-multilingual-MiniLM-L12-v2` + `Qdrant`
-        - **Sparse Search:** Custom Regex `BM25Okapi` (preserves `§` & course codes)
+        - **Sparse Search:** `BM25Okapi` + Snowball DE/EN Stemmers
         - **Fusion:** Reciprocal Rank Fusion ($k=60$)
-        - **Reranker:** Cross-Encoder (`ms-marco-MiniLM-L-6-v2`)
-        - **Generator:** `openai/gpt-oss-120b` (Pydantic JSON schema + citations)
+        - **Reranker:** Multilingual Cross-Encoder (`mmarco-mMiniLMv2-L12-H384-v1`)
+        - **Guardrails:** Programmatic Citation Verifier + Rerank Confidence Gate
         """
     )
 
-# --- Main Header ---
-st.title("JKU Linz & Austrian Student Life Navigator")
+st.title("🎓 JKU Linz & Austrian Student Life Navigator")
 st.markdown(
-    "Ask questions in **English or German** across official JKU curriculum guides, credit transfer tables, "
-    "house regulations (*Hausordnung*), and campus parking rules (*Parkordnung*)."
+    "Ask questions in **English or German** across **27 official JKU documents (3,046 chunks)**: TNF Bachelor curricula, "
+    "credit transfer tables, examination law (*Satzungsteil Studienrecht*), and campus regulations (*Hausordnung*, *Parkordnung*, Library & ZID IT)."
 )
 
-# --- Navigation Tabs ---
 tab_chat, tab_eval, tab_corpus = st.tabs([
     "Bilingual RAG Assistant",
-    "100-Query Evaluation & Ablation Dashboard",
+    "4-Arm Ablation & Evaluation Dashboard",
     "Indexed JKU Document Corpus",
 ])
 
@@ -85,127 +88,144 @@ with tab_chat:
     if col4.button("Hallucination Trap Test", use_container_width=True):
         preset_query = "What is the minimum cryptocurrency deposit required to use the JKU submarine dock?"
 
-    user_input = st.chat_input("Ask a question about JKU regulations, courses, parking, or credit transfers...")
+    user_input = st.chat_input(
+        "Ask a question about JKU regulations, courses, parking, or credit transfers...",
+        max_chars=500,
+    )
     active_query = preset_query or user_input
 
     if active_query:
+        try:
+            bot = get_rag_engine()
+            with st.spinner("1️⃣ Expanding query bilingually ➔ 2️⃣ Hybrid Search + RRF ➔ 3️⃣ mMARCO Reranking ➔ 4️⃣ Verifying citations..."):
+                st.session_state["last_rag_result"] = bot.answer_question(
+                    user_query=active_query,
+                    target_language=lang_choice,
+                    top_n_chunks=top_n,
+                )
+        except Exception:
+            st.error("The RAG service encountered a temporary upstream rate limit or error. Please try again in a few seconds.")
+
+    if "last_rag_result" in st.session_state:
+        result = st.session_state["last_rag_result"]
+
         with st.chat_message("user"):
-            st.write(active_query)
+            st.write(result["user_query"])
 
         with st.chat_message("assistant"):
-            try:
-                bot = get_rag_engine()
-                with st.spinner("1️⃣ Expanding query bilingually ➔ 2️⃣ Running Hybrid Search + RRF ➔ 3️⃣ Cross-Encoder Reranking ➔ 4️⃣ Generating cited response..."):
-                    result = bot.answer_question(
-                        user_query=active_query,
-                        target_language=lang_choice,
-                        top_n_chunks=top_n,
+            status_col1, status_col2, status_col3 = st.columns([1.2, 1.2, 2.2])
+            if result["is_supported"]:
+                status_col1.success("Grounded in JKU Corpus")
+            else:
+                status_col1.warning("Abstention Triggered (Unsupported)")
+
+            cit_audit = result.get("citation_audit", {})
+            if cit_audit.get("all_citations_valid", True):
+                status_col2.success(f"Citations Verified ({result.get('latency_ms', 0)} ms)")
+            else:
+                status_col2.warning(f"Filtered {cit_audit.get('hallucinated_citations_removed', 0)} Unverified Citation(s)")
+
+            status_col3.info(f"**Bilingual Expansion:** `{result['bilingual_search_query']}`")
+
+            st.markdown("### Answer")
+            st.markdown(result["answer"])
+            st.caption(f"Answered by `{result.get('model_used', 'Groq LLM')}` in `{result.get('latency_ms', 0)} ms`")
+
+            if result["citations"]:
+                st.markdown("#### Programmatically Verified Citations (Matched Against Retrieved Chunks)")
+                for cit in result["citations"]:
+                    st.markdown(
+                        f"- **`[{cit['source']}, Page {cit['page']}]`** *(Section: {cit['section']})* — {cit['evidence_summary']}"
                     )
 
-                # Show Guardrail Badge & Bilingual Expansion
-                status_col1, status_col2 = st.columns([1, 2])
-                if result["is_supported"]:
-                    status_col1.success("Grounded in JKU Documents")
-                else:
-                    status_col1.warning("Abstention Triggered (Unsupported by Corpus)")
-
-                status_col2.info(f"**Bilingual Search Expansion:** `{result['bilingual_search_query']}`")
-
-                # Main Answer
-                st.markdown("### Answer")
-                st.markdown(result["answer"])
-
-                # Structured Citations
-                if result["citations"]:
-                    st.markdown("#### Verified Citations")
-                    for cit in result["citations"]:
-                        st.markdown(
-                            f"- **`[{cit['source']}, Page {cit['page']}]`** *(Section: {cit['section']})* — {cit['evidence_summary']}"
-                        )
-
-                # Under-the-Hood Retrieval Telemetry
-                with st.expander("Inspect Under-the-Hood Hybrid Retrieval & Reranker Scores"):
-                    for rank_idx, chunk in enumerate(result["retrieved_chunks"], 1):
-                        st.markdown(
-                            f"**Rank #{rank_idx}** | **`{chunk['source']}` (Page {chunk['page']})** | "
-                            f"Section: `{chunk['section']}`  \n"
-                            f"**Cross-Encoder Score:** `{chunk['rerank_score']}` | "
-                            f"**RRF Score:** `{chunk['rrf_score']}` "
-                            f"*(Dense Vector Rank: `#{chunk['dense_rank']}`, BM25 Keyword Rank: `#{chunk['bm25_rank']}`)*"
-                        )
-                        st.code(chunk.get("contextual_text", chunk["text"]), language="markdown")
-
-            except Exception as e:
-                st.error(f"Error executing RAG pipeline: {e}")
+            with st.expander("Inspect Under-the-Hood Hybrid Retrieval & Multilingual Reranker Scores"):
+                for rank_idx, chunk in enumerate(result["retrieved_chunks"], 1):
+                    d_rank = f"#{chunk['dense_rank']}" if chunk.get("dense_rank") is not None else "—"
+                    b_rank = f"#{chunk['bm25_rank']}" if chunk.get("bm25_rank") is not None else "—"
+                    st.markdown(
+                        f"**Rank #{rank_idx}** | **`{chunk['source']}` (Page {chunk['page']})** | "
+                        f"Section: `{chunk['section']}`  \n"
+                        f"**mMARCO Cross-Encoder Score:** `{chunk['rerank_score']}` | "
+                        f"**RRF Score:** `{chunk['rrf_score']}` "
+                        f"*(Dense Vector Rank: `{d_rank}`, Snowball BM25 Rank: `{b_rank}`)*"
+                    )
+                    st.code(chunk.get("contextual_text", chunk["text"]), language="markdown")
 
 # =====================================================================
-# TAB 2: 100-QUERY EVALUATION & ABLATION DASHBOARD
+# TAB 2: 4-ARM ABLATION & EVALUATION DASHBOARD
 # =====================================================================
 with tab_eval:
-    eval_data = load_json_file("data/processed/eval_results.json")
+    eval_data = read_cached_json("data/processed/eval_results.json")
 
     if not eval_data:
         st.warning("No evaluation report found yet. Run `python -m src.evaluation.eval_runner` first.")
     else:
-        st.subheader("1. Retrieval Architecture Ablation Study (100 Queries, Top-5)")
+        st.subheader("1. 4-Arm Retrieval Architecture Ablation Study (100 Non-Circular Queries, Top-5)")
         st.caption(
-            f"Last benchmarked: {eval_data.get('timestamp')} | Compares Naive Dense Vector Search against "
-            "Sparse BM25 and our Full Hybrid RRF + Cross-Encoder Reranker."
+            f"Last benchmarked: {eval_data.get('timestamp')} across {eval_data.get('corpus_chunks', 3046)} chunks | "
+            "Reports Page-Level Recall@5 (with 95% Wilson Score Confidence Intervals) and Mean Reciprocal Rank (MRR)."
         )
 
         ab = eval_data["retrieval_100_ablation"]["ablation_results"]
+        base_hit = ab["naive_dense"]["exact_chunk_hit_rate_pct"]
+        base_mrr = ab["naive_dense"]["mrr"]
 
-        m1, m2, m3 = st.columns(3)
-        with m1:
-            st.markdown("#### 1️⃣ Naive Dense Vector")
-            st.metric("Exact Chunk Hit Rate @ 5", f"{ab['naive_dense']['exact_chunk_hit_rate_pct']}%")
-            st.metric("Mean Reciprocal Rank (MRR)", f"{ab['naive_dense']['mrr']}")
-            st.metric("Document Hit Rate @ 5", f"{ab['naive_dense']['document_hit_rate_pct']}%")
+        cols = st.columns(4)
+        arm_configs = [
+            ("1️⃣ Naive Dense Vector", "naive_dense", False),
+            ("2️⃣ Sparse BM25 (Snowball)", "sparse_bm25", True),
+            ("3️⃣ Hybrid RRF (No Rerank)", "hybrid_rrf_no_rerank", True),
+            ("4️⃣ Hybrid RRF + mMARCO", "hybrid_reranked", True),
+        ]
 
-        with m2:
-            st.markdown("#### 2️⃣ Sparse BM25 Keyword")
-            st.metric(
-                "Exact Chunk Hit Rate @ 5",
-                f"{ab['sparse_bm25']['exact_chunk_hit_rate_pct']}%",
-                delta=f"+{round(ab['sparse_bm25']['exact_chunk_hit_rate_pct'] - ab['naive_dense']['exact_chunk_hit_rate_pct'], 1)}% vs Dense",
-            )
-            st.metric(
-                "Mean Reciprocal Rank (MRR)",
-                f"{ab['sparse_bm25']['mrr']}",
-                delta=f"+{round(ab['sparse_bm25']['mrr'] - ab['naive_dense']['mrr'], 3)} vs Dense",
-            )
-            st.metric("Document Hit Rate @ 5", f"{ab['sparse_bm25']['document_hit_rate_pct']}%")
+        for col, (title, key, show_delta) in zip(cols, arm_configs):
+            if key not in ab:
+                continue
+            r = ab[key]
+            ci = r.get("page_hit_ci_95", [0.0, 0.0])
+            hit_diff = r["exact_chunk_hit_rate_pct"] - base_hit
+            mrr_diff = r["mrr"] - base_mrr
 
-        with m3:
-            st.markdown("#### 3️⃣ Hybrid RRF + Reranker (Ours)")
-            st.metric(
-                "Exact Chunk Hit Rate @ 5",
-                f"{ab['hybrid_reranked']['exact_chunk_hit_rate_pct']}%",
-                delta=f"+{round(ab['hybrid_reranked']['exact_chunk_hit_rate_pct'] - ab['naive_dense']['exact_chunk_hit_rate_pct'], 1)}% vs Dense",
-            )
-            st.metric(
-                "Mean Reciprocal Rank (MRR)",
-                f"{ab['hybrid_reranked']['mrr']}",
-                delta=f"+{round(ab['hybrid_reranked']['mrr'] - ab['naive_dense']['mrr'], 3)} vs Dense",
-            )
-            st.metric("Document Hit Rate @ 5", f"{ab['hybrid_reranked']['document_hit_rate_pct']}%")
+            with col:
+                st.markdown(f"#### {title}")
+                st.metric(
+                    "Page Hit Rate @ 5",
+                    f"{r['exact_chunk_hit_rate_pct']}%",
+                    delta=f"{hit_diff:+.1f} pp vs Dense" if show_delta else None,
+                )
+                st.caption(f"95% Wilson CI: `{ci[0]}% – {ci[1]}%`")
+                st.metric(
+                    "Mean Reciprocal Rank (MRR)",
+                    f"{r['mrr']:.3f}",
+                    delta=f"{mrr_diff:+.3f} vs Dense" if show_delta else None,
+                )
+                st.metric("Document Hit Rate @ 5", f"{r['document_hit_rate_pct']}%")
 
         st.markdown("---")
-        st.subheader("2. End-to-End Generation & Hallucination Audit (LLM-as-a-Judge)")
+        st.subheader("2. End-to-End Generation, Citation & Abstention Audit")
         gen = eval_data["generation_audit"]
 
-        g1, g2, g3, g4 = st.columns(4)
-        g1.metric("Document Retrieval Accuracy", f"{gen['correct_document_retrieval_pct']}%")
+        g1, g2, g3, g4, g5 = st.columns(5)
+        g1.metric("Doc Retrieval Accuracy", f"{gen['correct_document_retrieval_pct']}%")
         g2.metric("Answer Relevance", f"{gen['answer_relevance_pct']}%")
         g3.metric("Context Faithfulness", f"{gen['context_support_faithfulness_pct']}%")
-        g4.metric("Hallucination Rate", f"{gen['hallucination_rate_pct']}%", delta_color="inverse")
+        g4.metric("Verified Citations", f"{gen.get('citation_verification_pct', 100.0)}%")
+        g5.metric("Hallucination Rate", f"{gen['hallucination_rate_pct']}%", delta_color="inverse")
 
-        st.markdown("#### Detailed Audit Log (Every Test Case & Judge Reasoning)")
+        st.markdown("#### Detailed Audit Log (Every Test Case, Model Used & Judge Reasoning)")
         for idx, case in enumerate(gen["cases"], 1):
             badge = "PASS" if (case["supported_by_context"] and not case["hallucinated"]) else "FLAGGED BY JUDGE"
             with st.expander(f"Case #{idx} [{badge}]: {case['question']}"):
-                st.write(f"**Expected Source:** `{case['expected_source']}` | **Correct Doc Retrieved:** `{case['doc_retrieved_correctly']}`")
-                st.write(f"**Answer Relevant:** `{case['answer_relevant']}` | **Supported by Context:** `{case['supported_by_context']}` | **Hallucinated:** `{case['hallucinated']}`")
+                st.write(
+                    f"**Expected Source:** `{case['expected_source']}` | "
+                    f"**Correct Doc Retrieved:** `{case['doc_retrieved_correctly']}` | "
+                    f"**Citations Verified:** `{case.get('citations_verified', True)}`"
+                )
+                st.write(
+                    f"**Generator Model:** `{case.get('generator_model', 'N/A')}` | "
+                    f"**Judge Model:** `{case.get('judge_model', 'N/A')}` | "
+                    f"**Latency:** `{case.get('latency_ms', 0)} ms`"
+                )
                 st.info(f"🧑‍⚖️ **LLM Judge Reasoning:** {case['judge_reasoning']}")
                 st.caption(f"**Generated Answer Preview:** {case['answer_preview']}")
 
@@ -213,7 +233,7 @@ with tab_eval:
 # TAB 3: INDEXED CORPUS EXPLORER
 # =====================================================================
 with tab_corpus:
-    chunks_data = load_json_file("data/processed/chunks.json")
+    chunks_data = read_cached_json("data/processed/chunks.json")
     if chunks_data:
         doc_counts = {}
         for c in chunks_data:

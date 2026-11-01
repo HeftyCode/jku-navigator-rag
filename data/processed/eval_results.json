@@ -1,120 +1,248 @@
 {
-  "timestamp": "2026-11-01 17:15:19",
+  "timestamp": "2026-11-02 00:25:50",
+  "corpus_chunks": 3046,
   "retrieval_100_ablation": {
     "total_queries": 100,
     "top_k": 5,
     "ablation_results": {
       "naive_dense": {
-        "exact_chunk_hit_rate_pct": 72.0,
-        "document_hit_rate_pct": 90.0,
-        "mrr": 0.569
+        "exact_chunk_hit_rate_pct": 30.0,
+        "page_hit_ci_95": [
+          21.9,
+          39.6
+        ],
+        "document_hit_rate_pct": 55.0,
+        "mrr": 0.238
       },
       "sparse_bm25": {
-        "exact_chunk_hit_rate_pct": 91.0,
-        "document_hit_rate_pct": 97.0,
-        "mrr": 0.686
+        "exact_chunk_hit_rate_pct": 99.0,
+        "page_hit_ci_95": [
+          94.6,
+          99.8
+        ],
+        "document_hit_rate_pct": 100.0,
+        "mrr": 0.877
+      },
+      "hybrid_rrf_no_rerank": {
+        "exact_chunk_hit_rate_pct": 86.0,
+        "page_hit_ci_95": [
+          77.9,
+          91.5
+        ],
+        "document_hit_rate_pct": 90.0,
+        "mrr": 0.547
       },
       "hybrid_reranked": {
-        "exact_chunk_hit_rate_pct": 95.0,
-        "document_hit_rate_pct": 99.0,
-        "mrr": 0.792
+        "exact_chunk_hit_rate_pct": 96.0,
+        "page_hit_ci_95": [
+          90.2,
+          98.4
+        ],
+        "document_hit_rate_pct": 98.0,
+        "mrr": 0.766
       }
     }
   },
   "generation_audit": {
-    "total_evaluated": 8,
+    "total_evaluated": 12,
     "correct_document_retrieval_pct": 100.0,
     "answer_relevance_pct": 100.0,
-    "context_support_faithfulness_pct": 100.0,
-    "hallucination_rate_pct": 0.0,
+    "context_support_faithfulness_pct": 91.7,
+    "hallucination_rate_pct": 8.3,
+    "citation_verification_pct": 100.0,
+    "abstention_accuracy_pct": 100.0,
     "cases": [
       {
         "question": "Am I allowed to bring a dog onto the JKU campus and what are the rules?",
         "expected_source": "2116_Hausordnung_V17_2026_10_08.pdf",
         "is_answerable": true,
         "doc_retrieved_correctly": true,
+        "abstention_accurate": true,
+        "citations_verified": true,
         "answer_relevant": true,
         "supported_by_context": true,
         "hallucinated": false,
-        "judge_reasoning": "The answer directly addresses the question using the house rules about pet bans, exceptions, and visitor requirements found in the provided context.",
-        "answer_preview": "According to the JKU house rules, a dog is generally **not allowed** in any JKU building. The rules state that **all buildings have a pet ban**【2116_Hausordnung_V17_2026_10_08.pdf, Page 14】. \n\n**Exceptions** are limited ..."
+        "judge_reasoning": "The answer’s claims about a general dog ban, exceptions for assistance dogs with medical proof, leash/muzzle requirement, excrement cleanup, and possible house ban are all present in the retrieved context.",
+        "generator_model": "openai/gpt-oss-120b",
+        "judge_model": "openai/gpt-oss-120b",
+        "latency_ms": 3668.0,
+        "answer_preview": "In general, dogs are not allowed on the JKU campus. The house rules state a blanket pet ban in all university buildings, with an exception only for specially trained assistance dogs (e.g., guide or partner dogs) that are..."
       },
       {
         "question": "Was ist der Unterschied zwischen VL und KV Kursen im Bachelor AI?",
         "expected_source": "Bachelor_AI_Studienleitfaden.pdf",
         "is_answerable": true,
         "doc_retrieved_correctly": true,
+        "abstention_accurate": true,
+        "citations_verified": true,
         "answer_relevant": true,
         "supported_by_context": true,
         "hallucinated": false,
-        "judge_reasoning": "The answer correctly states VL are lectures and KV are combined courses, matching the provided documents and noting their hybrid format.",
-        "answer_preview": "Im Bachelor‑Studiengang Künstliche Intelligenz bezeichnet **VL** eine *Vorlesung* (Lecture), während **KV** für *Kombinierte Veranstaltung* (Combined Course) steht. Beide Kursarten werden überwiegend im Hybrid‑Format ang..."
+        "judge_reasoning": "The answer correctly states that VL are lecture-only and KV are combined lecture‑exercise courses, which is directly described in the retrieved context (pages 15 and 39). No unsupported claims are present.",
+        "generator_model": "openai/gpt-oss-120b",
+        "judge_model": "openai/gpt-oss-120b",
+        "latency_ms": 3685.6,
+        "answer_preview": "VL‑Kurse sind reine Vorlesungen (Lecture), während KV‑Kurse kombinierte Veranstaltungen (Combined Course) sind, die sowohl Vorlesungsanteile als auch praktische Übungen (Übungen) umfassen. KV‑Kurse verbinden damit theore..."
       },
       {
         "question": "Where are the Distance Learning Centers located for the JKU AI program?",
         "expected_source": "Bachelor_AI_Studienleitfaden.pdf",
         "is_answerable": true,
         "doc_retrieved_correctly": true,
+        "abstention_accurate": true,
+        "citations_verified": true,
         "answer_relevant": true,
         "supported_by_context": true,
         "hallucinated": false,
-        "judge_reasoning": "The answer correctly states the centers are in Vienna and Bregenz, directly matching the retrieved context.",
-        "answer_preview": "The Distance Learning Centers for the AI program are available in **Vienna** and **Bregenz**. These centers provide facilities for study and examinations, with lecture halls equipped with advanced streaming tools so stud..."
+        "judge_reasoning": "The answer states the centers are in Vienna and Bregenz, which is directly mentioned in the retrieved context for the AI program; no unsupported claims are made.",
+        "generator_model": "openai/gpt-oss-120b",
+        "judge_model": "openai/gpt-oss-120b",
+        "latency_ms": 1961.0,
+        "answer_preview": "The Distance Learning Centers for the AI program are located in Vienna and Bregenz, where lecture halls in the Zentrum für Fernstudien provide facilities for study and examinations. [Bachelor_AI_Studienleitfaden.pdf, Pag..."
       },
       {
         "question": "Welche Regeln gelten laut Parkordnung für das Parken am JKU Campus?",
         "expected_source": "4101_Parkordnung_V6_2026_09_09.pdf",
         "is_answerable": true,
         "doc_retrieved_correctly": true,
+        "abstention_accurate": true,
+        "citations_verified": true,
         "answer_relevant": true,
         "supported_by_context": true,
         "hallucinated": false,
-        "judge_reasoning": "The answer lists parking rules that are directly drawn from the provided Parkordnung sections, matching the question without adding unsupported information.",
-        "answer_preview": "## Regeln laut Parkordnung der JKU\n\n- **Einhaltung der Parkordnung und Anweisungen**: Verstöße gegen behördliche Vorschriften, die Nichtbefolgung der Parkordnung oder der Anweisungen des für den Parkraum zuständigen Pers..."
+        "judge_reasoning": "The answer’s statements about entry restrictions, permitted use, prohibitions (e.g., marked tow zones, disabled spots, vehicles without license plates), vehicle securing, obeying staff orders, and penalties all directly appear in the retrieved park ordinance excerpts.",
+        "generator_model": "openai/gpt-oss-120b",
+        "judge_model": "openai/gpt-oss-120b",
+        "latency_ms": 20083.9,
+        "answer_preview": "Laut der Parkordnung der JKU dürfen Fahrzeuge nur nach Maßgabe dieser Ordnung in die ausgewiesenen Parkplatzzonen einfahren; jeder Nutzer unterwirft sich damit, den Bereich unverzüglich zu verlassen, wenn er nicht mehr b..."
       },
       {
         "question": "How does credit transfer work between Informatik and Artificial Intelligence at JKU?",
         "expected_source": "Credit_Transfer_between_the_Programs_Informatik_and_Artificial_Intelligence_at_JKU.pdf",
         "is_answerable": true,
         "doc_retrieved_correctly": true,
+        "abstention_accurate": true,
+        "citations_verified": true,
         "answer_relevant": true,
-        "supported_by_context": true,
-        "hallucinated": false,
-        "judge_reasoning": "The answer directly describes the module‑by‑module credit mapping and totals shown in the provided table, without adding unsupported information.",
-        "answer_preview": "At JKU the credit transfer between the Bachelor Informatik and the Bachelor Artificial Intelligence programmes is based on a detailed module‑by‑module mapping. Each Informatik course is matched to an equivalent AI course..."
+        "supported_by_context": false,
+        "hallucinated": true,
+        "judge_reasoning": "The answer mostly reflects the module equivalences shown in the tables, but it incorrectly states that the Statistics module transfers with only 3.0 VL credits, omitting the UE credits present in the context, thus introducing an unsupported claim.",
+        "generator_model": "openai/gpt-oss-120b",
+        "judge_model": "openai/gpt-oss-120b",
+        "latency_ms": 19561.1,
+        "answer_preview": "At JKU, credit transfer between the Bachelor Informatik program and the Bachelor Artificial Intelligence program is based on a direct equivalence of modules. Each Informatik course is matched to an AI course that carries..."
       },
       {
         "question": "How are credits transferred between Bioinformatics and Artificial Intelligence?",
         "expected_source": "Credit_Transfer_between_the_Programs_Bioinformatics_and_Artificial_Intelligence_at_JKU.pdf",
         "is_answerable": true,
         "doc_retrieved_correctly": true,
+        "abstention_accurate": true,
+        "citations_verified": true,
         "answer_relevant": true,
         "supported_by_context": true,
         "hallucinated": false,
-        "judge_reasoning": "The answer directly mirrors the course‑credit mappings and totals presented in the retrieved JKU document.",
-        "answer_preview": "### Credit transfer between Bioinformatics and Artificial Intelligence (JKU)\n\nThe JKU document provides a detailed mapping of each **Bachelor Bioinformatics** course to its counterpart(s) in the **Bachelor Artificial Int..."
+        "judge_reasoning": "The answer’s detailed mappings of Bioinformatics modules to AI modules, including ECTS values and total credits, are all present in the retrieved tables, and no unsupported facts are introduced.",
+        "generator_model": "openai/gpt-oss-120b",
+        "judge_model": "openai/gpt-oss-120b",
+        "latency_ms": 23247.0,
+        "answer_preview": "Credits are transferred by using a detailed equivalence table that matches each Bioinformatics module to one or more Artificial Intelligence modules together with the corresponding ECTS values. For the bachelor programme..."
+      },
+      {
+        "question": "Welche Sicherheitsregeln gelten laut allgemeiner Laborordnung in den Labors der JKU?",
+        "expected_source": "1203_Allgemeine_Laborordnung_V2_2019_07_02.pdf",
+        "is_answerable": true,
+        "doc_retrieved_correctly": true,
+        "abstention_accurate": true,
+        "citations_verified": true,
+        "answer_relevant": true,
+        "supported_by_context": true,
+        "hallucinated": false,
+        "judge_reasoning": "The answer restates the safety rules about avoiding hazards, informing nearby persons for high‑risk work, and the indefinite applicability with additional measures for special cases, all of which are present in the retrieved context.",
+        "generator_model": "openai/gpt-oss-120b",
+        "judge_model": "openai/gpt-oss-120b",
+        "latency_ms": 21787.7,
+        "answer_preview": "Die Allgemeine Laborordnung der JKU legt fest, dass alle in Laboratorien tätigen Personen ihr Verhalten so auszurichten haben, dass Gefährdungen soweit wie möglich vermieden werden. Bei Arbeiten mit hohem Gefährdungspote..."
+      },
+      {
+        "question": "What are the rules for borrowing books and using the JKU University Library?",
+        "expected_source": "Benuetzungsordnung_Universitaetsbibliothek_Library.pdf",
+        "is_answerable": true,
+        "doc_retrieved_correctly": true,
+        "abstention_accurate": true,
+        "citations_verified": true,
+        "answer_relevant": true,
+        "supported_by_context": true,
+        "hallucinated": false,
+        "judge_reasoning": "All statements in the answer are directly supported by the retrieved sections on reading area access, borrowing rules, and electronic media usage, with no extra invented information.",
+        "generator_model": "openai/gpt-oss-120b",
+        "judge_model": "openai/gpt-oss-120b",
+        "latency_ms": 17208.1,
+        "answer_preview": "The JKU University Library allows free access to the collections in the reading area without any formalities; after use, books must be placed on the marked shelves or left on the reading tables, and the library staff wil..."
+      },
+      {
+        "question": "Welche Pflichtfächer und ECTS umfasst das Bachelorstudium Statistik und Data Science?",
+        "expected_source": "Exam_Roster_BA_Statistik_Data_Science_2026W.pdf",
+        "is_answerable": true,
+        "doc_retrieved_correctly": true,
+        "abstention_accurate": true,
+        "citations_verified": true,
+        "answer_relevant": true,
+        "supported_by_context": true,
+        "hallucinated": false,
+        "judge_reasoning": "All claims in the answer—listing the four mandatory subjects and the 24 ECTS for Theoretische Statistik and Data Science—are directly found in the retrieved documents, with no unsupported information.",
+        "generator_model": "openai/gpt-oss-120b",
+        "judge_model": "openai/gpt-oss-120b",
+        "latency_ms": 16258.0,
+        "answer_preview": "Das Bachelorstudium Statistik und Data Science umfasst die Pflichtfächer Theoretische Statistik, Angewandte Statistik, Praktische Statistik und Data Science [Exam_Roster_BA_Statistik_Data_Science_2026W.pdf, Page 1]. Für ..."
+      },
+      {
+        "question": "Welche Bestimmungen gelten im Satzungsteil Studienrecht für Prüfungen und Studienabschlüsse?",
+        "expected_source": "2105_Satzungsteil_Studienrecht_V31_2026_07_02.pdf",
+        "is_answerable": true,
+        "doc_retrieved_correctly": true,
+        "abstention_accurate": true,
+        "citations_verified": true,
+        "answer_relevant": true,
+        "supported_by_context": true,
+        "hallucinated": false,
+        "judge_reasoning": "All statements in the answer are directly reflected in the retrieved excerpts, covering Bachelor and Master provisions, the Prüfungsordnung, Gesamtprüfung, Mastergrade, and module exam requirements.",
+        "generator_model": "openai/gpt-oss-120b",
+        "judge_model": "openai/gpt-oss-120b",
+        "latency_ms": 9743.9,
+        "answer_preview": "Im Satzungsteil Studienrecht sind für Prüfungen und Studienabschlüsse mehrere Bestimmungen festgelegt. Für das Bachelorstudium sind Bestimmungen über die Anfertigung einer oder zweier Bachelorarbeiten (§ 80 UG) sowie die..."
       },
       {
         "question": "What is the minimum cryptocurrency deposit required to use the JKU submarine dock?",
         "expected_source": "NONE_TRAP_QUESTION",
         "is_answerable": false,
         "doc_retrieved_correctly": true,
+        "abstention_accurate": true,
+        "citations_verified": true,
         "answer_relevant": true,
         "supported_by_context": true,
         "hallucinated": false,
-        "judge_reasoning": "The answer correctly states that the documents lack any information about a cryptocurrency deposit or submarine dock, which is supported by the provided context.",
-        "answer_preview": "The provided JKU documents do not contain any information about a cryptocurrency deposit or a submarine dock...."
+        "judge_reasoning": "The retrieved context contains no mention of a cryptocurrency deposit or a submarine dock, and the answer correctly states that the documents lack this information.",
+        "generator_model": "openai/gpt-oss-120b",
+        "judge_model": "openai/gpt-oss-120b",
+        "latency_ms": 6920.0,
+        "answer_preview": "The provided documents do not contain any information about a cryptocurrency deposit or a submarine dock at JKU."
       },
       {
         "question": "Welches Formular muss ich ausfüllen, um ein kostenloses JKU-Raumschiff zu mieten?",
         "expected_source": "NONE_TRAP_QUESTION",
         "is_answerable": false,
         "doc_retrieved_correctly": true,
+        "abstention_accurate": true,
+        "citations_verified": true,
         "answer_relevant": true,
         "supported_by_context": true,
         "hallucinated": false,
-        "judge_reasoning": "The answer correctly states that the retrieved JKU documents do not contain any information about a form for renting a free JKU spaceship.",
-        "answer_preview": "Die aktuellen JKU‑Dokumente enthalten keine Information darüber, welches Formular für die kostenlose Anmietung eines JKU‑Raumschiffs auszufüllen ist...."
+        "judge_reasoning": "The answer correctly states that the provided documents do not contain information about the required form for renting a free JKU‑Raumschiff, and the retrieved context indeed lacks any such information.",
+        "generator_model": "openai/gpt-oss-120b",
+        "judge_model": "openai/gpt-oss-120b",
+        "latency_ms": 11128.4,
+        "answer_preview": "Die bereitgestellten Dokumente enthalten keine Informationen darüber, welches Formular für die Anmietung eines kostenlosen JKU‑Raumschiffs auszufüllen ist."
       }
     ]
   }
